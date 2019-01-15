@@ -87,15 +87,6 @@ export class NodeUtils extends UtilParser {
     return node;
   }
 
-  hasPartial(node: $ReadOnlyArray<?N.Expression>): boolean {
-    for (let i = 0; i < node.length; i++) {
-      if (node[i].type === "Partial") {
-        return true;
-      }
-    }
-    return false;
-  }
-
   /**
    * Reset the start location of node to the start location of locationNode
    */
