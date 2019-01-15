@@ -1950,7 +1950,7 @@ export default class ExpressionParser extends LValParser {
       this.expectPlugin("partialApplication");
       const node = this.startNode();
       this.next();
-      elt = this.finishNode(node, "Partial");
+      elt = this.finishNode(node, "PartialExpression");
     } else {
       elt = this.parseMaybeAssign(
         false,
