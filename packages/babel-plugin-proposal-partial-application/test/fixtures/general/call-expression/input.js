@@ -1,3 +1,5 @@
 "use strict";
 
-const foo = bar(?, 1, x, 3, ?);
+const baz = ber(2, 4, ?, ?, 1);
+const foo = bar(1, ?, x, 3, ?);
+

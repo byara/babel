@@ -5,53 +5,118 @@ import { types as t } from "@babel/core";
 export default declare(api => {
   api.assertVersion(7);
 
-  let orderedArguments = [];
-  let nonPlaceholders = [];
-  let placeholders = [];
-  let blockStatementBody = [];
-
   /**
-   * creates an array of VariableDeclarators
-   * @param node to get the names from it
-   * @todo deal with the acceptance of strings and not numbers
+   * a function to figure out if a call expression has
+   * ArgumentPlaceholder as one of its arguments
+   * @param node a callExpression node
+   * @returns boolean
    */
-  function declaratorCreator(node) {
-    blockStatementBody = blockStatementBody.concat(
-      t.variableDeclarator(
-        t.identifier(`_func0`),
-        t.identifier(node.callee.name),
-      ),
-    );
-    for (let i = 0; i < nonPlaceholders.length; i++) {
-      blockStatementBody = blockStatementBody.concat(
-        t.variableDeclarator(
-          t.identifier(`_param${i}`),
-          t.identifier(`${nonPlaceholders[i]}`),
-        ),
-      );
+  function hasArgumentPlaceholder(node) {
+    for (let i = 0; i < node.arguments.length; i++) {
+      if (t.isArgumentPlaceholder(node.arguments[i])) {
+        return true;
+      }
     }
+    return false;
   }
 
   /**
-   * gets all Arguments and puts them in appropriate array
-   * @param node
-   * @todo find a way to NOT use a global variable for the arguments
+   * Creates a unique identifier for the new returned function
+   * @param {Object} scope
+   * @returns {LVal} unique identifier
    */
-  function unfoldArguments(node) {
-    for (let i = 0; i < node.arguments.length; i++) {
-      if (t.isArgumentPlaceholder(node.arguments[i])) {
-        placeholders = placeholders.concat(t.identifier(`_argPlaceholder${i}`));
-        orderedArguments = orderedArguments.concat(
-          t.identifier(`_argPlaceholder${i}`),
-        );
-      } else if (t.isIdentifier(node.arguments[i])) {
-        nonPlaceholders = nonPlaceholders.concat(node.arguments[i].name);
-        orderedArguments = orderedArguments.concat(t.identifier(`_param${i}`));
-      } else {
-        nonPlaceholders = nonPlaceholders.concat(node.arguments[i].value);
-        orderedArguments = orderedArguments.concat(t.identifier(`_param${i}`));
+  function newFuncLVal(scope) {
+    return scope.generateUidIdentifier("_func");
+  }
+
+  /**
+   * Creates a unique identifier for the parameters
+   * @param {Object} scope
+   * @returns {LVal} unique identifier
+   */
+  function newParamLVal(scope) {
+    return scope.generateUidIdentifier("_param");
+  }
+
+  /**
+   * Unwrap the arguments of a CallExpression and removes
+   * ArgumentPlaceholders from the unwrapped arguments
+   * @param {Object} node CallExpression node
+   * @returns {Array<Expression>}
+   */
+  function unwrapArguments(node) {
+    const nonPlaceholder = node.arguments.filter(
+      argument => argument.type !== "ArgumentPlaceholder",
+    );
+    return nonPlaceholder;
+  }
+
+  /**
+   * Unwraps all of the arguments in CallExpression
+   * and removes ArgumentPlaceholders type with Identifier
+   * and gives them a uniques name.
+   * @param {Object} node
+   * @param {Object} scope
+   * @returns {Array<Expression>} the arguments
+   */
+  function unwrapAllArguments(node, scope) {
+    const clone = t.cloneNode(node);
+    clone.arguments.forEach(argument => {
+      if (argument.type === "ArgumentPlaceholder") {
+        argument.type = "Identifier";
+        argument.name = scope.generateUid("_argPlaceholder");
       }
-    }
+    });
+    return clone.arguments;
+  }
+
+  /**
+   * Makes an array of declarator for our VariableDeclaration
+   * @param {Array<Expression>} inits
+   * @param {Object} scope
+   */
+  function argsToVarDeclarator(inits, scope) {
+    let declarator = [];
+    declarator = inits.map(expr =>
+      t.variableDeclarator(newParamLVal(scope), expr),
+    );
+    return declarator;
+  }
+
+  /**
+   * It replaces the values of non-placeholder args in allArgs
+   * @param {Array<Declarator>} nonPlaceholderDecl that has no placeholder in them
+   * @param {Array<Arguments>} args
+   */
+  function mapNonPlaceholderToLVal(nonPlaceholderDecl, allArgsList) {
+    const clone = Array.from(allArgsList);
+    clone.forEach(cl => {
+      nonPlaceholderDecl.forEach(dec => {
+        if (dec.init.type === cl.type) {
+          if (!!cl.value && cl.value === dec.init.value) {
+            cl.value = dec.id.name;
+          } else if (!!cl.name && cl.name === dec.init.name) {
+            cl.name = dec.id.name;
+          }
+        }
+      });
+    });
+    return clone;
+  }
+
+  /**
+   * Takes the full list of arguments and extracts placeholders from it
+   * @param {Array<Argument>} allArgsList full list of arguments
+   * @returns {Array<ArgumentPlaceholder>} cloneList
+   */
+  function placeholderLVal(scope, allArgsList) {
+    let cloneList = [];
+    allArgsList.forEach(item => {
+      if (item.name && item.name.includes("_argPlaceholder")) {
+        cloneList = cloneList.concat(item);
+      }
+    });
+    return cloneList;
   }
 
   return {
@@ -60,47 +125,47 @@ export default declare(api => {
 
     visitor: {
       CallExpression(path) {
-        const { node } = path;
-        // create arrays of arguments
-        unfoldArguments(node);
-        // create an array of declarator
-        declaratorCreator(node);
-
-        /**
-         * we need a BlockStatement to put all the statements in it
-         * @param body Array<Statement>
-         * @param directives Array<Directive> (default: null)
-         * @todo maybe not use spread operator
-         */
-        const newBlockStatement = t.blockStatement([
-          t.variableDeclaration("const", blockStatementBody),
-
-          t.returnStatement(
-            t.arrowFunctionExpression(
-              placeholders,
-              t.callExpression(t.identifier(`XXXX`), orderedArguments),
-              false,
+        if (!hasArgumentPlaceholder(path.node)) {
+          return;
+        }
+        const { node, scope } = path;
+        const functionLVal = newFuncLVal(scope);
+        const nonPlaceholderArgs = unwrapArguments(node);
+        const nonPlaceholderDecl = argsToVarDeclarator(
+          nonPlaceholderArgs,
+          scope,
+        );
+        const allArgs = unwrapAllArguments(node, scope);
+        const finalArgs = mapNonPlaceholderToLVal(nonPlaceholderDecl, allArgs);
+        const placeholderVals = placeholderLVal(scope, allArgs);
+        const finalExpression = t.callExpression(
+          t.arrowFunctionExpression(
+            [],
+            t.blockStatement(
+              [
+                t.variableDeclaration("const", [
+                  t.variableDeclarator(
+                    functionLVal,
+                    t.identifier(node.callee.name),
+                  ),
+                ]),
+                t.variableDeclaration("const", nonPlaceholderDecl),
+                t.returnStatement(
+                  t.arrowFunctionExpression(
+                    placeholderVals,
+                    t.callExpression(functionLVal, finalArgs),
+                    false,
+                  ),
+                ),
+              ],
+              [],
             ),
+            false,
           ),
-        ]);
-
-        /**
-         * we create an ArrowFunctionExpression
-         * @param params Array<LVal>
-         * @param body BlockStatement | Expression
-         * @param async boolean
-         */
-
-        const outerArrowFunction = t.parenthesizedExpression(
-          t.arrowFunctionExpression([], newBlockStatement, false),
+          [],
         );
 
-        /**
-         * here we create a call expression out of the arrow function
-         */
-        // const outerCallExpression = t.callExpression(outerArrowFunction, []);
-
-        path.replaceWith(outerArrowFunction);
+        path.replaceWith(finalExpression);
       },
     },
   };
