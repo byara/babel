@@ -1,7 +1,7 @@
 "use strict";
 
-const foo = bar((() => {
-  const _func = baz;
-  const _param = 1;
-  return _argPlaceholder => _func(_argPlaceholder, _param);
-})());
+var _ref, _baz;
+
+const foo = bar((_baz = baz, function baz(_argPlaceholder) {
+  return _baz(_argPlaceholder, 1);
+}));

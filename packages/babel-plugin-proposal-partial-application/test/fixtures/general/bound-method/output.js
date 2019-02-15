@@ -1,10 +1,10 @@
 class Collator {
   constructor() {
-    this.compare = (() => {
-      const _receiver = this;
-      const _func = this.compare;
-      return (_argPlaceholder, _argPlaceholder2) => _func.call(_receiver, _argPlaceholder, _argPlaceholder2);
-    })();
+    var _this, _this$compare;
+
+    this.compare = (_this = this, _this$compare = this.compare, function compare(_argPlaceholder, _argPlaceholder2) {
+      return _this$compare.call(_this, _argPlaceholder, _argPlaceholder2);
+    });
   }
 
   compare(a, b) {

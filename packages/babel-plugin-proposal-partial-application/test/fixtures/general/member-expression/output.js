@@ -1,26 +1,13 @@
 "use strict";
 
-const g = (() => {
-  const _receiver = o;
-  const _func = o.f;
-  const _param = x,
-        _param2 = 1;
-  return _argPlaceholder => _func.call(_receiver, _argPlaceholder, _param, _param2);
-})();
+var _param, _o, _o$f, _param2, _param3, _p, _p$b, _a$b$c$d$e, _a$b$c$d$e$foo;
 
-const h = (() => {
-  const _receiver2 = p;
-  const _func2 = p.b;
-  const _param3 = 1,
-        _param4 = y,
-        _param5 = x,
-        _param6 = 2;
-  return _argPlaceholder2 => _func2.call(_receiver2, _param3, _param4, _param5, _param6, _argPlaceholder2);
-})();
-
-const j = (() => {
-  const _receiver3 = a.b.c.d.e;
-  const _func3 = a.b.c.d.e.foo;
-  const _param7 = 1;
-  return _argPlaceholder3 => _func3.call(_receiver3, _argPlaceholder3, _param7);
-})();
+const g = (_o = o, _o$f = o.f, _param = x, function f(_argPlaceholder) {
+  return _o$f.call(_o, _argPlaceholder, _param, 1);
+});
+const h = (_p = p, _p$b = p.b, _param2 = y, _param3 = x, function b(_argPlaceholder2) {
+  return _p$b.call(_p, 1, _param2, _param3, 2, _argPlaceholder2);
+});
+const j = (_a$b$c$d$e = a.b.c.d.e, _a$b$c$d$e$foo = a.b.c.d.e.foo, function foo(_argPlaceholder3) {
+  return _a$b$c$d$e$foo.call(_a$b$c$d$e, _argPlaceholder3, 1);
+});
