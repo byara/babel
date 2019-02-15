@@ -1,5 +1,12 @@
-"use strict";
+function add(a, b) {
+  return a + b;
+}
 
-const slice = Array.prototype.slice.call(?, ?, ?);
+function square(x){
+  return x * x;
+}
 
-expect(slice({ 0: "a", 1: "b", length: 2 }, 1, 2)).toEqual(["b"]);
+const foo = add(?, 1);
+const bar = square(?);
+
+expect(bar(foo(2))).toBe(9);
