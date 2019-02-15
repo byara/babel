@@ -120,7 +120,16 @@ export default declare(api => {
               t.cloneNode(receiverLVal),
               node.callee.object,
             ),
-            t.assignmentExpression("=", t.cloneNode(functionLVal), node.callee),
+            t.assignmentExpression(
+              "=",
+              t.cloneNode(functionLVal),
+              t.memberExpression(
+                receiverLVal,
+                node.callee.property,
+                false,
+                false,
+              ),
+            ),
             ...nonPlaceholderArgs,
             t.functionExpression(
               node.callee.property,
