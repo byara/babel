@@ -16,109 +16,29 @@ export default declare(api => {
   }
 
   /**
-   * Creates a unique identifier for the new returned function
-   * @param {Object} scope
-   * @returns {LVal} unique identifier
-   */
-  function newFuncLVal(scope) {
-    return scope.generateUidIdentifier("_func");
-  }
-
-  /**
-   * Creates a unique identifier for the new receiver
-   * @param {Object} scope
-   * @returns {LVal} unique identifier
-   */
-  function newReceiverLVal(scope) {
-    return scope.generateUidIdentifier("_receiver");
-  }
-
-  /**
-   * Creates a unique identifier for the parameters
-   * @param {Object} scope
-   * @returns {LVal} unique identifier
-   */
-  function newParamLVal(scope) {
-    return scope.generateUidIdentifier("_param");
-  }
-
-  /**
-   * returns the correct right hand-side for the receiver function
-   * based on the callee type
+   * Unwrap the arguments of a CallExpression, and creates
+   * assignmentExpression from them and returns them as an array.
    * @param {Object} node CallExpression node
-   * @returns {Array<Expression>}
+   * @returns {Array<AssignmentExpression>}
    */
-  function funcRVal(node) {
-    if (node.callee.type === "MemberExpression") {
-      return unfold(node);
-    }
-  }
-
-  /**
-   * removes last node from an unfolded argument
-   * @param {Object} node CallExpression node
-   * @returns {String} correct right hand-side for the receiver
-   * in a MemberExpression
-   */
-  function receiverRVal(node) {
-    const rVal = unfold(node).split(".");
-    rVal.pop();
-    return rVal.join(".");
-  }
-
-  /**
-   * a recursive function that unfolds nested MemberExpressions
-   * @param {Object} node CallExpression node
-   * @returns {String} the correct right hand-side value for the receiver
-   * and the function
-   */
-  function unfold(node, acc = "") {
-    if (t.isIdentifier(node)) {
-      return `${node.name}.${acc}`;
-    } else if (t.isThisExpression(node)) {
-      return `this${acc ? "." : ""}${acc}`;
-    } else if (t.isThisExpression(node && node.callee && node.callee.object)) {
-      return unfold(
-        node.callee.object,
-        `${node.callee.property.name}${acc ? "." : ""}${acc}`,
-      );
-    } else if (
-      node.callee
-        ? t.isMemberExpression(node.callee)
-        : t.isMemberExpression(node)
-    ) {
-      try {
-        return unfold(
-          node.callee.object,
-          `${node.callee.property.name}${acc ? "." : ""}${acc}`,
-        );
-      } catch (error) {
-        return unfold(
-          node.object,
-          `${node.property.name}${acc ? "." : ""}${acc}`,
-        );
+  function unwrapArguments(node, scope) {
+    let newNode;
+    let argId;
+    return node.arguments.reduce((acc, arg) => {
+      if (!t.isArgumentPlaceholder(arg) && !t.isNumericLiteral(arg)) {
+        argId = scope.generateUidIdentifier("_param");
+        scope.push({ id: argId });
+        newNode = t.assignmentExpression("=", t.cloneNode(argId), arg);
+        acc.push(newNode);
       }
-    } else {
-      throw new Error(`Can't unfold ${JSON.stringify(node)}`);
-    }
+      return acc;
+    }, []);
   }
 
   /**
-   * Unwrap the arguments of a CallExpression and removes
-   * ArgumentPlaceholders from the unwrapped arguments
-   * @param {Object} node CallExpression node
-   * @returns {Array<Expression>}
-   */
-  function unwrapArguments(node) {
-    return node.arguments.filter(
-      argument => argument.type !== "ArgumentPlaceholder",
-    );
-  }
-
-  /**
-   * Unwraps all of the arguments in CallExpression
-   * and removes ArgumentPlaceholders type with Identifier
-   * and gives them a uniques name.
+   * Unwraps all of the arguments in a CallExpression
+   * and replaces ArgumentPlaceholder type with Identifier
+   * and gives them a unique name.
    * @param {Object} node
    * @param {Object} scope
    * @returns {Array<Expression>} the arguments
@@ -127,45 +47,31 @@ export default declare(api => {
     const clone = t.cloneNode(node);
 
     return clone.arguments.map(arg => {
-      if (arg.type === "ArgumentPlaceholder") {
+      if (t.isArgumentPlaceholder(arg)) {
         return Object.assign({}, arg, {
           type: "Identifier",
           name: scope.generateUid("_argPlaceholder"),
         });
       }
-
       return arg;
     });
   }
 
   /**
-   * Makes an array of declarator for our VariableDeclaration
-   * @param {Array<Expression>} inits
-   * @param {Object} scope
-   */
-  function argsToVarDeclarator(inits, scope) {
-    return inits.map(expr => t.variableDeclarator(newParamLVal(scope), expr));
-  }
-
-  /**
    * It replaces the values of non-placeholder args in allArgs
-   * @param {Array<Declarator>} nonPlaceholderDecl that has no placeholder in them
-   * @param {Array<Arguments>} args
+   * @param {Array<Node>} nonPlaceholderArgs that has no placeholder in them
+   * @param {Array<Node>} args
    */
-  function mapNonPlaceholderToLVal(nonPlaceholderDecl, allArgsList) {
-    const clone = Array.from(allArgsList);
-    clone.map(cl => {
-      nonPlaceholderDecl.forEach(dec => {
-        if (dec.init.type === cl.type) {
-          if (!!cl.value && cl.value === dec.init.value) {
-            cl.value = dec.id.name;
-          } else if (!!cl.name && cl.name === dec.init.name) {
-            cl.name = dec.id.name;
-          }
+  function mapNonPlaceholderToLVal(nonPlaceholderArgs, allArgsList) {
+    const clonedArgs = Array.from(allArgsList);
+    clonedArgs.map(arg => {
+      nonPlaceholderArgs.forEach(pArg => {
+        if (!t.isNumericLiteral(arg) && pArg.right.name === arg.name) {
+          arg.name = pArg.left.name;
         }
       });
     });
-    return clone;
+    return clonedArgs;
   }
 
   /**
@@ -193,84 +99,68 @@ export default declare(api => {
           return;
         }
         const { node, scope } = path;
-        const functionLVal = newFuncLVal(scope);
-        const receiverLVal = newReceiverLVal(scope);
-        const nonPlaceholderArgs = unwrapArguments(node);
-        const nonPlaceholderDecl = argsToVarDeclarator(
-          nonPlaceholderArgs,
-          scope,
+        const functionLVal = path.scope.generateUidIdentifierBasedOnNode(
+          node.callee,
         );
+        const receiverLVal = path.scope.generateUidIdentifierBasedOnNode(
+          node.callee.object,
+        );
+        const nonPlaceholderArgs = unwrapArguments(node, scope);
         const allArgs = unwrapAllArguments(node, scope);
-        const finalArgs = mapNonPlaceholderToLVal(nonPlaceholderDecl, allArgs);
+        const finalArgs = mapNonPlaceholderToLVal(nonPlaceholderArgs, allArgs);
         const placeholderVals = placeholderLVal(allArgs);
 
-        if (node.callee.type === "MemberExpression") {
-          const data = [
-            t.variableDeclaration("const", [
-              t.variableDeclarator(
-                receiverLVal,
-                t.identifier(receiverRVal(node)),
-              ),
-            ]),
+        scope.push({ id: receiverLVal });
+        scope.push({ id: functionLVal });
 
-            t.variableDeclaration("const", [
-              t.variableDeclarator(
-                functionLVal,
-                t.identifier(`${funcRVal(node)}`),
-              ),
-            ]),
-          ];
-          if (nonPlaceholderDecl.length !== 0) {
-            data.push(t.variableDeclaration("const", nonPlaceholderDecl));
-          }
-          data.push(
-            t.returnStatement(
-              t.arrowFunctionExpression(
-                placeholderVals,
-                t.callExpression(
-                  t.memberExpression(
-                    functionLVal,
-                    t.identifier("call"),
-                    false,
-                    false,
-                  ),
-                  [receiverLVal, ...finalArgs],
-                ),
-                false,
-              ),
+        if (node.callee.type === "MemberExpression") {
+          const finalExpression = t.sequenceExpression([
+            t.assignmentExpression(
+              "=",
+              t.cloneNode(receiverLVal),
+              node.callee.object,
             ),
-          );
-          const finalExpression = t.callExpression(
-            t.arrowFunctionExpression([], t.blockStatement(data, []), false),
-            [],
-          );
+            t.assignmentExpression("=", t.cloneNode(functionLVal), node.callee),
+            ...nonPlaceholderArgs,
+            t.functionExpression(
+              node.callee.property,
+              placeholderVals,
+              t.blockStatement(
+                [
+                  t.returnStatement(
+                    t.callExpression(
+                      t.memberExpression(
+                        functionLVal,
+                        t.identifier("call"),
+                        false,
+                        false,
+                      ),
+                      [receiverLVal, ...finalArgs],
+                    ),
+                  ),
+                ],
+                [],
+              ),
+              false,
+              false,
+            ),
+          ]);
           path.replaceWith(finalExpression);
         } else {
-          const data = [
-            t.variableDeclaration("const", [
-              t.variableDeclarator(
-                functionLVal,
-                t.identifier(node.callee.name),
+          const finalExpression = t.sequenceExpression([
+            t.assignmentExpression("=", t.cloneNode(functionLVal), node.callee),
+            ...nonPlaceholderArgs,
+            t.functionExpression(
+              node.callee,
+              placeholderVals,
+              t.blockStatement(
+                [t.returnStatement(t.callExpression(functionLVal, finalArgs))],
+                [],
               ),
-            ]),
-          ];
-          if (nonPlaceholderDecl.length !== 0) {
-            data.push(t.variableDeclaration("const", nonPlaceholderDecl));
-          }
-          data.push(
-            t.returnStatement(
-              t.arrowFunctionExpression(
-                placeholderVals,
-                t.callExpression(functionLVal, finalArgs),
-                false,
-              ),
+              false,
+              false,
             ),
-          );
-          const finalExpression = t.callExpression(
-            t.arrowFunctionExpression([], t.blockStatement(data, []), false),
-            [],
-          );
-
+          ]);
           path.replaceWith(finalExpression);
         }
       },
