@@ -1,6 +1,6 @@
 "use strict";
 
-var _param, _o, _o$f, _param2, _param3, _p, _p$b, _a$b$c$d$e, _a$b$c$d$e$foo;
+var _param, _o$f, _o, _param2, _param3, _p$b, _p, _a$b$c$d$e$foo, _a$b$c$d$e;
 
 const g = (_o = o, _o$f = _o.f, _param = x, function f(_argPlaceholder) {
   return _o$f.call(_o, _argPlaceholder, _param, 1);
