@@ -28,7 +28,15 @@ export default declare(api => {
       if (!t.isArgumentPlaceholder(arg) && !t.isNumericLiteral(arg)) {
         argId = scope.generateUidIdentifier("_param");
         scope.push({ id: argId });
-        newNode = t.assignmentExpression("=", t.cloneNode(argId), arg);
+        if (t.isSpreadElement(arg)) {
+          newNode = t.assignmentExpression(
+            "=",
+            t.cloneNode(argId),
+            t.arrayExpression([arg]),
+          );
+        } else {
+          newNode = t.assignmentExpression("=", t.cloneNode(argId), arg);
+        }
         acc.push(newNode);
       }
       return acc;
@@ -63,15 +71,20 @@ export default declare(api => {
    * @param {Array<Node>} args
    */
   function mapNonPlaceholderToLVal(nonPlaceholderArgs, allArgsList) {
-    const clonedArgs = Array.from(allArgsList);
-    clonedArgs.map(arg => {
+    allArgsList.forEach(arg => {
       nonPlaceholderArgs.forEach(pArg => {
-        if (!t.isNumericLiteral(arg) && pArg.right.name === arg.name) {
+        if (
+          t.isSpreadElement(arg) &&
+          !t.isIdentifier(pArg.right) &&
+          pArg.right.elements[0].argument.name === arg.argument.name
+        ) {
+          arg.argument.name = pArg.left.name;
+        } else if (!t.isNumericLiteral(arg) && pArg.right.name === arg.name) {
           arg.name = pArg.left.name;
         }
       });
     });
-    return clonedArgs;
+    return allArgsList;
   }
 
   /**
@@ -80,10 +93,10 @@ export default declare(api => {
    * @returns {Array<ArgumentPlaceholder>} cloneList
    */
   function placeholderLVal(allArgsList) {
-    let cloneList = [];
+    const cloneList = [];
     allArgsList.forEach(item => {
       if (item.name && item.name.includes("_argPlaceholder")) {
-        cloneList = cloneList.concat(item);
+        cloneList.push(item);
       }
     });
     return cloneList;
@@ -102,18 +115,19 @@ export default declare(api => {
         const functionLVal = path.scope.generateUidIdentifierBasedOnNode(
           node.callee,
         );
-        const receiverLVal = path.scope.generateUidIdentifierBasedOnNode(
-          node.callee.object,
-        );
+
         const nonPlaceholderArgs = unwrapArguments(node, scope);
         const allArgs = unwrapAllArguments(node, scope);
         const finalArgs = mapNonPlaceholderToLVal(nonPlaceholderArgs, allArgs);
         const placeholderVals = placeholderLVal(allArgs);
 
-        scope.push({ id: receiverLVal });
         scope.push({ id: functionLVal });
 
         if (node.callee.type === "MemberExpression") {
+          const receiverLVal = path.scope.generateUidIdentifierBasedOnNode(
+            node.callee.object,
+          );
+          scope.push({ id: receiverLVal });
           const finalExpression = t.sequenceExpression([
             t.assignmentExpression(
               "=",
